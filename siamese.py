@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[46]:
 
 
 from time import time
@@ -25,7 +25,7 @@ import itertools
 import datetime
 
 
-# In[2]:
+# In[47]:
 
 
 TRAIN_CSV = 'data/train-mini.csv'
@@ -33,7 +33,7 @@ TEST_CSV = 'data/test-mini.csv'
 MODEL_SAVING_DIR = 'model/'
 
 
-# In[26]:
+# In[72]:
 
 
 def text_to_word_list(text):
@@ -119,7 +119,7 @@ embeddings = 1 * np.random.randn(len(vocabulary) + 1, embedding_dim)  # This wil
 embeddings[0] = 0
 
 
-# In[27]:
+# In[73]:
 
 
 #Pad the sequences to maxlen.
@@ -187,7 +187,9 @@ Y_net_train = {'label' : Y_train}
 Y_net_validation = {'label' : Y_validation}
 
 
-# In[24]:
+# # Model
+
+# In[70]:
 
 
 class Siamese(gluon.HybridBlock):
@@ -235,18 +237,16 @@ for (k, v) in net1.items():
 net2.initialize(init=init.Normal(sigma=0.01), ctx=ctx)
 
 
-# In[28]:
+# In[74]:
 
 
-print(type(embeddings))
-embeddings = np.split(embeddings, len(net1), axis=1)
+subembeddings = np.split(embeddings, len(net1), axis=1)
 for i, (k, v) in enumerate(net1.items()):
-    print(embeddings[i].shape)
-    gpuembeddings = (mx.nd.array(embeddings[i])).as_in_context(k)
+    gpuembeddings = (mx.nd.array(subembeddings[i])).as_in_context(k)
     v.embedding.weight.set_data(gpuembeddings)
 
 
-# In[29]:
+# In[75]:
 
 
 trainer1 = {k: gluon.Trainer(v.collect_params(), 
@@ -260,7 +260,7 @@ loss = gluon.loss.L2Loss()
 
 # # Train
 
-# In[30]:
+# In[ ]:
 
 
 def train_model(dataiter, epoch):
@@ -272,34 +272,21 @@ def train_model(dataiter, epoch):
             embs = []
             data_lists = []
             for k in range(2):
-                print(batch.data[k].shape)
                 embedding = [net1[c](batch.data[k].as_in_context(c)) for c in ctx]
-                print(embedding[0].shape)
                 embs.append(embedding)
                 # data_list[i][j] is the ith part of embedding of sub-batch j (on gpu(j))
                 # data_list[i][j] is of shape (B / len(ctx), embedding_dim / len(ctx))
                 data_list = [gluon.utils.split_and_load(e, ctx, even_split=True) for e in embedding]
-                print(data_list[0][0].shape)
-                data_list = [mx.nd.concat(*[subemb[j] for subemb in data_list], dim=1) for j in range(len(ctx))]
+                data_list = [mx.nd.concat(*[subemb[j] for subemb in data_list], dim=2) for j in range(len(ctx))]
                 data_lists.append(data_list)
             data_list1, data_list2 = data_lists[0], data_lists[1]
-            print(data_list1[0].shape)
-            print(data_list2[0].shape)
             label_list = gluon.utils.split_and_load(batch.label[0], ctx, even_split=True)
             losses = [loss(net2(X1, X2), Y) for X1, X2, Y in zip(data_list1, data_list2, label_list)] 
 
-#         print(embedding[0].grad.ctx)
-#         print(embedding[1].grad.ctx)
-#         print(embedding[0]._fresh_grad)
-#         print(net1[ctx[0]].embedding.weight._data[0]._fresh_grad)
-#         print(net2.dense.weight._data[0]._fresh_grad)
         for i, l in enumerate(losses):
             l.backward(retain_graph=True)
             for k, v in trainer1.items():
                 v.step(batch.data[0].shape[0])
-#         print(embedding[0]._fresh_grad)
-#         print(net1[ctx[0]].embedding.weight._data[0]._fresh_grad)
-#         print(net2.dense.weight._data[0]._fresh_grad)
         trainer2.step(batch.data[0].shape[0])
         total_size += batch.data[0].shape[0]
         train_loss += sum([l.sum().asscalar() for l in losses])
@@ -328,7 +315,7 @@ for epoch in range(EPOCHS):
 
 # # Validate
 
-# In[9]:
+# In[41]:
 
 
 def validate_model(valdataiter):
@@ -371,7 +358,7 @@ print("{:>12} = {}".format("auc", auc))
 
 
 
-# In[10]:
+# In[42]:
 
 
 import mxnet as mx
@@ -435,7 +422,7 @@ print(net2.weight._data[0]._fresh_grad)
 # print(b.grad)
 
 
-# In[11]:
+# In[43]:
 
 
 import mxnet as mx
