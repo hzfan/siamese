@@ -24,7 +24,7 @@ import datetime
 
 
 # %%
-TRAIN_CSV = 'data/train-mini.csv'
+TRAIN_CSV = 'data/train.csv'
 TEST_CSV = 'data/test-mini.csv'
 MODEL_SAVING_DIR = 'model/'
 
@@ -180,7 +180,7 @@ Y_net_validation = {'label' : Y_validation}
 
 
 # %%
-scale = 2 ** 20 // (len(vocabulary) + 1)
+scale = 2 ** 23 // (len(vocabulary) + 1)
 vocabulary_size = scale * (len(vocabulary) + 1)
 for dataset, side in itertools.product([X_train, X_validation], ['left', 'right']):
     dataset[side] = np.array(dataset[side], dtype='int') * scale
@@ -262,7 +262,7 @@ profiler.set_config(profile_all=True,
                     profile_imperative=True,
                     aggregate_stats=True,
                     continuous_dump=True,
-                    filename='profile_output.json')
+                    filename='profile.json')
 
 
 # %%
@@ -285,11 +285,10 @@ def train_model(dataiter, epoch):
             data_list1, data_list2 = data_lists[0], data_lists[1]
             label_list = gluon.utils.split_and_load(batch.label[0], ctx, even_split=True)
             losses = [loss(net2(X1, X2), Y) for X1, X2, Y in zip(data_list1, data_list2, label_list)] 
-
-        for i, l in enumerate(losses):
-            l.backward(retain_graph=True)
-            for k, v in trainer1.items():
-                v.step(batch.data[0].shape[0])
+            sum_loss = sum([loss.as_in_context(ctx[0]) for loss in losses])
+        sum_loss.backward()
+        for k, v in trainer1.items():
+            v.step(batch.data[0].shape[0])
         trainer2.step(batch.data[0].shape[0])
         total_size += batch.data[0].shape[0]
         train_loss += sum([l.sum().asscalar() for l in losses])
@@ -304,7 +303,7 @@ training_loss = []
 validation_loss = []
 BATCH_SIZE = 1000
 LEARNING_R = 0.001
-EPOCHS = 2
+EPOCHS = 10
 THRESHOLD = 0.5
 dataiter = mx.io.NDArrayIter(X_train, Y_net_train, BATCH_SIZE, True, last_batch_handle='discard')
 valdataiter = mx.io.NDArrayIter(X_validation, Y_net_validation, BATCH_SIZE, True, last_batch_handle='discard')
